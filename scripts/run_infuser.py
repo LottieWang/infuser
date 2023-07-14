@@ -1,12 +1,13 @@
 import os
 import sys
 import subprocess
-import graph
+from graphs import graphs
 
-import collect_seeds
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-INFUSER_DIR = os.path.dirname(os.path.abspath(__file__))
-IM_DIR = f'{INFUSER_DIR}/../../IM'
+
+# INFUSER_DIR = os.path.dirname(os.path.abspath(__file__))
+# IM_DIR = f'{INFUSER_DIR}/../../IM'
 
 
 def run_infuser(graph, w, folder):
@@ -79,8 +80,34 @@ def run_infuser_scale_all(folder):
 
 if __name__ == '__main__':
     subprocess.call("export LD_PRELOAD=/usr/local/lib/libjemalloc.so",shell=True)
-    folder = "scale_256"
-    # run_infuser_scale_all(folder)
-    # run_infuser_scale('/data0/graphs/links/sd_arc_sym.bin',  0.02, folder)
-    collect_seeds.collect_time_all(folder, folder, graph.get_all_graphs())
-    # collect_seeds.collect_memory_all(folder, folder)
+    subprocess.call(f'mkdir -p {CURRENT_DIR}/../logs', shell=True)
+    infuser = f'{CURRENT_DIR}/../bin/infuser'
+    # general_cascade = f'{CURRENT_DIR}/../general_cascade'
+    if not os.path.exists(infuser):
+        print('Please build by `make -j` first.')
+        assert (0)
+    for graph, url, w, GRAPH_DIR in graphs:
+        graph_file = f'{GRAPH_DIR}/{graph}.bin'
+        if not os.path.exists(graph_file):
+            print(f'\nWarning: {graph} does not exists')
+            # continue
+        seeds_file = f'{CURRENT_DIR}/../logs/{graph}.txt'
+        mem_file = f'{CURRENT_DIR}/../logs/{graph}_mem.txt'
+        print(f'\nRunning infuser on {graph_file}')
+        # test uniform distribution
+        if (w == 0.02):
+            u1 = 0
+            u2=0.1
+        if (w == 0.2):
+            u1 = 0.1
+            u2 = 0.3
+        command = f'{infuser} -M infuser -K 100 -R 256 -ua {u1} -ub {u2} {graph_file}'
+        print(f'Seeds saved to {seeds_file}')
+        subprocess.call(
+            f'/usr/bin/time -v numactl -i all {command} 1>> {seeds_file} 2>> {mem_file}', shell=True)
+        # subprocess.call(cmd, shell=True)
+        command = f'{infuser} -M infuser -K 100 -R 256 -WIC {graph_file}'
+        print(f'Seeds saved to {seeds_file}')
+        subprocess.call(
+            f'/usr/bin/time -v numactl -i all {command} 1>> {seeds_file} 2>> {mem_file}', shell=True)
+        

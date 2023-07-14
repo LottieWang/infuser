@@ -344,9 +344,10 @@ void newgreedy2(const graph_t& g, const int K, const int R, const size_t blocksi
 	}
 }
 
-void newgreedy(const graph_t& g, const int K, const int R, bool sorted) {
+auto newgreedy(const graph_t& g, const int K, const int R, bool sorted, vector<unsigned>& S) {
 	t.reset();
-	vector<unsigned> S(K), iteration(g.n, 0);
+	// vector<unsigned> S(K), iteration(g.n, 0);
+	vector<unsigned> iteration(g.n, 0);
 	vector<float> marginal_gain(g.n, 0);
 	uint32_t elems = (R / 64 * g.n);
 	size_t size = R * g.n;
@@ -405,12 +406,13 @@ void newgreedy(const graph_t& g, const int K, const int R, bool sorted) {
 		}
 	}
 	float seed_time = t.elapsed();
-	printf("sketch construction time: %f\n", sketching_time);
+	// printf("sketch construction time: %f\n", sketching_time);
 	// printf("construct priority queue time: %f\n", Q_time-sketching_time);
-	printf("seed selection time: %f\n", seed_time - sketching_time);
+	// printf("seed selection time: %f\n", seed_time - sketching_time);
 	// printf("total run time: %f\n", total_run_time);
 	// printf("total mark time: %f\n", total_mark_time);
-	printf("total time: %f\n", seed_time);
+	// printf("total time: %f\n", seed_time);
+	return make_pair(sketching_time, seed_time - sketching_time);
 }
 
 
