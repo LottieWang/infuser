@@ -109,6 +109,10 @@ double run(const graph_t& g, const vector<unsigned>& S, const size_t k, const in
 		float* counts = &(counts_ptr[r * g.n]);
 		uint32_t* labels = &(labels_ptr[r * g.n]);
 		const uint32_t u = S[k - 1];
+		// #pragma omp parallel for
+		// for (int b = 0; b<BLOCKSIZE; b++){
+		// 	auto a = 1;
+		// }
 #pragma omp parallel for reduction(+:score)
 		for (int b = 0; b < BLOCKSIZE; b++) {
 			const auto label = labels[u * BLOCKSIZE + b];
@@ -124,7 +128,6 @@ double run(const graph_t& g, const vector<unsigned>& S, const size_t k, const in
 			}
 		}
 	}
-
 	return score / R;
 }
 void scc2(float* scores, const graph_t& g, const int R, const size_t BLOCKSIZE,
@@ -359,6 +362,7 @@ void newgreedy(const graph_t& g, const int K, const int R, bool sorted) {
 
 	int blocksize = R;
 	scc(scores.get(), g, R, blocksize, counts.get(), labels.get(), rand_seeds.get());
+	float sketching_time = t.elapsed();
 	auto cmp = [&](uint32_t left, uint32_t right) {
 		return (marginal_gain[left] < marginal_gain[right]); };
 	std::priority_queue<uint32_t, vector<unsigned>, decltype(cmp)> q(cmp);
@@ -367,10 +371,14 @@ void newgreedy(const graph_t& g, const int K, const int R, bool sorted) {
 		marginal_gain[i] = scores[i] / (double)R;
 		q.push(i);
 	}
-
+	float Q_time = t.elapsed();
 	float max_for_k = -1;
 	int tries = 0;
 	auto s_cc = get_aligned<unsigned>(K * R);
+	float total_run_time = 0;
+	float total_mark_time = 0;
+	float round_mark_time = 0;
+	float round_run_time = 0;
 	for (size_t k = 0; k < K;) {
 		const auto u = q.top();
 		q.pop();
@@ -378,17 +386,31 @@ void newgreedy(const graph_t& g, const int K, const int R, bool sorted) {
 		if (iteration[u] == k) {
 			k++; // commit candidate
 			score += marginal_gain[u];
+			float mark_start = t.elapsed();
 			get_s_cc(s_cc.get(), g, S, k + 1, R, labels.get(), counts.get(), blocksize);
-			printf("%d\t%.2f\t%.2f\t%d\n", u, score, t.elapsed(), tries);
+			round_mark_time = t.elapsed() - mark_start;
+			total_mark_time += round_mark_time;
+			// printf("%d\t%.2f\t%.2f\t%d\t%.2f\t%.2f\n", u, score, t.elapsed(), tries, round_mark_time, round_run_time);
 			fflush(stdout);
+			total_run_time += round_run_time;
+			round_run_time = 0;
 		}
 		else {
 			tries++;
+			float run_start = t.elapsed();
 			marginal_gain[u] = run(g, S, k + 1, R, s_cc.get(), labels.get(), counts.get(), blocksize);
+			round_run_time += t.elapsed() - run_start;
 			iteration[u] = k; // recently scored
 			q.push(u);
 		}
 	}
+	float seed_time = t.elapsed();
+	printf("sketch construction time: %f\n", sketching_time);
+	// printf("construct priority queue time: %f\n", Q_time-sketching_time);
+	printf("seed selection time: %f\n", seed_time - sketching_time);
+	// printf("total run time: %f\n", total_run_time);
+	// printf("total mark time: %f\n", total_mark_time);
+	printf("total time: %f\n", seed_time);
 }
 
 

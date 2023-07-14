@@ -25,6 +25,7 @@
 #include <parallel/algorithm>
 #include <parallel/numeric>
 #include <stdlib.h> 
+#include <assert.h>
 void* _aligned_malloc(size_t size, size_t alignment) {
 	void* p;
 	if (posix_memalign(&p, alignment, size))
@@ -180,6 +181,92 @@ graph_t read_txt(string filename) {
 	g.xadj[i] = j;
 	return g;
 }
+graph_t read_binary(string filename){
+	graph_t g;
+	ifstream rf(filename);
+    if (!rf.is_open()) {
+      cerr << "Error: Cannot open file " << filename << '\n';
+      abort();
+    }
+	size_t n, m, sizes;
+    rf.read(reinterpret_cast<char*>(&n), sizeof(size_t));
+    rf.read(reinterpret_cast<char*>(&m), sizeof(size_t));
+    rf.read(reinterpret_cast<char*>(&sizes), sizeof(size_t));
+    assert(sizes == (n + 1) * 8 + m * 4 + 3 * 8);
+	g.n = n;
+	g.m = m;
+	uint64_t* offset = new uint64_t[n+1];
+	uint32_t* edges = new uint32_t[m];
+	rf.read(reinterpret_cast<char*>(offset), (n+1)*8);
+	rf.read(reinterpret_cast<char*>(edges), m*4);
+	g.xadj = new size_t[g.n+1];
+	g.adj = new edge_t[g.m];
+	// int w_int = int(w * INT_MAX);
+	for (size_t i = 0; i<n+1; i++){
+		g.xadj[i]=offset[i];
+	}
+	for (size_t i =0; i<m; i++){
+		g.adj[i] = {edges[i],0};
+	}
+	delete[] offset;
+	delete[] edges;
+	if (rf.peek() != EOF) {
+      cerr << "Error: Bad data\n";
+      abort();
+    }
+    rf.close();
+	// printf("size of size_t %ld, unsigned %ld, signed %ld, edge_t %ld\n", sizeof(size_t), sizeof(unsigned), sizeof(signed), sizeof(edge_t));
+	return g;
+}
+
+void AssignUniWeight(graph_t& graph, float w){
+  int w_int = int(w * INT_MAX);
+  for(size_t i = 0; i<graph.m; i++){
+	edge_t edge = graph.adj[i];
+    graph.adj[i]={edge.v, w_int};
+  }
+}
+
+inline uint64_t hash64(uint64_t u) {
+  uint64_t v = u * 3935559000370003845ul + 2691343689449507681ul;
+  v ^= v >> 21;
+  v ^= v << 37;
+  v ^= v >> 4;
+  v *= 4768777513237032717ul;
+  v ^= v << 20;
+  v ^= v >> 41;
+  v ^= v << 5;
+  return v;
+}
+
+double Uniform(size_t n, size_t u, size_t v, double l, double r) {
+  if (u > v) std::swap(u, v);
+  double p = 1.0 * hash64(hash64(hash64(n) + u + 1) + v + 1) / std::numeric_limits<uint64_t>::max();
+  return l + (r - l) * p;
+}
+
+void AssignUniformRandomWeight(graph_t& graph, double l, double r) {
+  for(size_t i =0; i< graph.n; i++) {
+    for(size_t j = graph.xadj[i]; j<graph.xadj[i+1]; j++) {
+      edge_t edge = graph.adj[j];
+	  double w = Uniform(graph.n, i, edge.v, l, r);
+      graph.adj[j]={edge.v, int(w*INT_MAX)};
+    }
+  }
+}
+
+void AssignWICWeight(graph_t& graph) {
+  for(size_t i = 0; i< graph.n; i++) {
+	auto deg_i = graph.xadj[i + 1] - graph.xadj[i];
+    for(size_t j = graph.xadj[i]; j<graph.xadj[i+1]; j++) {
+      edge_t edge = graph.adj[j];
+      auto deg_v = graph.xadj[edge.v + 1] - graph.xadj[edge.v];
+      double w = 2.0 / (deg_i + deg_v);
+	  graph.adj[j]={edge.v, int(w*INT_MAX)};
+    }
+  }
+}
+
 #include <assert.h>
 #define isbitset(x,i) ((x[i>>3] & (1<<(i&7)))!=0)
 #define setbit(x,i) x[i>>3]|=(1<<(i&7));
